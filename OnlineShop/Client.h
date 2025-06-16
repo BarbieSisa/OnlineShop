@@ -3,6 +3,7 @@
 #include "User.h"
 #include "UserCrud.h"
 #include "Order.h"
+#include "Admin.h"
 #include <vector>
 #include <string>
 
@@ -34,7 +35,9 @@ public:
  static void updatePoints(const std::string& egn, double newPoints);
     //static void updatePoints(std::string eng,double newPoints);
     static void saveAllClientsToFile();
+    std::string loginClientByUsernameAndPassword(const std::string& username, const std::string& password);
    static void create() ;
+  static void approveCheck(const std::string& code, const std::string& egn);
    static void loadAllClientsFromFile();
 
     double getBalance() const { return balance; }

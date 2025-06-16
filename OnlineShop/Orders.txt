@@ -1,6 +1,6 @@
 1
 1234567890
-Shipped
+Pending
 2
 Little Pink Dress
 12.51
@@ -10,7 +10,7 @@ Little Pink Dress
 0.2502
 2
 1234567890
-Shipped
+Pending
 2
 Little Black Dress
 12.57
@@ -20,7 +20,7 @@ Little Black Dress
 0.2514
 3
 1234567890
-Pending
+Shipped
 1
 Little Black Dress
 12.57
@@ -28,7 +28,7 @@ Little Black Dress
 0.1257
 4
 1234567890
-Pending
+Confirmed
 1
 Little Black Dress
 12.57
@@ -36,124 +36,27 @@ Little Black Dress
 0.1257
 5
 1234567890
-Pending
+Confirmed
 2
 Little Pink Dress
 12.51
 1
-Little Black Dress
-12.57
-1
-25.08
-0.2508
-6
-1234567890
-Pending
-2
-Little Black Dress
-12.57
-1
-Little Pink Dress
+0
 12.51
-1
-37.59
-0.3759
-6
-1234567890
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
+0.1251
 6
 0987654321
-Pending
+Shipped
 1
 Little Black Dress
 12.57
-1
 12.57
 0.1257
-6
+7
 0987654321
-Pending
+Shipped
 1
 Little Black Dress
 12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
-12.57
-0.1257
-6
-0987654321
-Pending
-1
-Little Black Dress
-12.57
-1
 12.57
 0.1257

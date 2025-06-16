@@ -26,14 +26,23 @@ public:
         const std::string& description, double rating);
 
     // CRUD interface
-    static void create();                          // static to avoid using default object
+    static void create();
+   static void removeById(int idToRemove);
+    static void displayByPriceAsc();
+    static void displayByAlphabetical();
+   static void displayByPriceDesc();
+   static void displayByRating();
+    // static to avoid using default object
     static Item read(int id);
     static void update(int id);
     static void remove(int id);
-    static void listAllItems();
+    static void listProducts();
+    static void displayAllProducts();
+
+    static void viewProductById(int searchId);
 
     // Utility
-    void printDetails() const;
+   // void printDetails() const;
     bool getAvailable() const;
     double getPrice() const;
     int getQuantity() const;
@@ -44,6 +53,10 @@ public:
     void setPrice(double price);
     static int findIndexById(int id);
     void setAvailable(bool available);
+    void setRating(double newRating);
     static void updateQuantity(int, int);
       const std::string& getName() const;
+    static void updateRating(int productId, double newRating);
+      //static void loadFromFile();
+      //static void setNextId(int value);
 };

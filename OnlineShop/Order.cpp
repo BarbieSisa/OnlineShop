@@ -4,19 +4,21 @@
 #include <fstream>
 #include <limits>
 #include <algorithm>
+#include "OrderCrud.h"
 
 int Order::nextId = 1;
 std::vector<Order> Order::orders;
-
+double discountValue = 0.0;      // сумата на отстъпката
+bool discountApplied = false;
 std::string statusToString(OrderStatus status) {
     switch (status) {
     case OrderStatus::Pending: return "Pending";
+    case OrderStatus::Confirmed: return "Confirmed";
     case OrderStatus::Shipped: return "Shipped";
     case OrderStatus::Delivered: return "Delivered";
     default: return "Unknown";
     }
 }
-
 Order::Order() : id(nextId++), status(OrderStatus::Pending) {}
 int Order::findIndexById(int id) {
     for (size_t i = 0; i < orders.size(); ++i) {
@@ -24,7 +26,6 @@ int Order::findIndexById(int id) {
     }
     return -1;
 }
-
 void Order::addItemToOrder(std::vector<Item>& items) {
     int id;
     std::map<int, int> quantityMap;  // itemId -> quantity
@@ -37,9 +38,7 @@ void Order::addItemToOrder(std::vector<Item>& items) {
         if (id == 0) break;
 
         try {
-            std::cout << "Reading item with ID " << id << "...\n";
-            Item item = Item::read(id);
-
+            Item item = Item::read(id);  // зареждаме от файла по ID
             std::cout << "Item found: " << item.getName() << "\n";
 
             int quantityItem;
@@ -51,22 +50,28 @@ void Order::addItemToOrder(std::vector<Item>& items) {
                 continue;
             }
 
-            for (int i = 0; i < quantityItem; ++i) {
-                items.emplace_back(item);
-            }
-
+            // Запазваме само 1 брой артикул, не многократно копие
+            items.push_back(item);
             quantityMap[id] += quantityItem;
             itemMap[id] = item;
-
-            item.setQuantity(item.getQuantity() - quantityItem);
-            item.setAvailable(item.getQuantity() > 0);
-            item.updateQuantity(id, quantityItem);
 
             std::cout << "✅ " << quantityItem << " x '" << item.getName() << "' added.\n";
         }
         catch (const std::exception& e) {
             std::cerr << "❌ Error: " << e.what() << "\n";
         }
+    }
+
+    // 🛠 Актуализирай наличностите ЕДНОКРАТНО:
+    for (const auto& pair : quantityMap) {
+        int itemId = pair.first;
+        int bought = pair.second;
+        Item item = itemMap[itemId];
+
+        int newQuantity = item.getQuantity() - bought;
+        item.setQuantity(newQuantity);
+        item.setAvailable(newQuantity > 0);
+        Item::updateQuantity(itemId, bought);  // или направи update с новата стойност
     }
 
     // 📦 Summary
@@ -77,6 +82,7 @@ void Order::addItemToOrder(std::vector<Item>& items) {
         int qty = pair.second;
         const Item& item = itemMap[itemId];
         double subtotal = item.getPrice() * qty;
+
         std::cout << "- " << item.getName()
             << " x" << qty
             << " = " << subtotal << " BGN\n";
@@ -85,9 +91,8 @@ void Order::addItemToOrder(std::vector<Item>& items) {
 
     std::cout << "🧾 Total: " << total << " BGN\n";
     std::cout << "🎁 Reward Points: " << (total * 0.05) << "\n";
-    std::cout << "Finished adding items. Total: " << items.size() << " item(s).\n";
+    std::cout << "Finished adding items. Unique products: " << items.size() << "\n";
 }
-
 void Order::removeItemFromOrder(std::vector<Item>& items) {
     int id;
     std::cout << "Enter ID of item to remove from order: ";
@@ -152,7 +157,6 @@ void Order::removeItemFromOrder(std::vector<Item>& items) {
     std::cout << "🎁 Reward Points: " << (total * 0.05) << "\n";
     std::cout << "Finished removing. Remaining: " << items.size() << " item(s).\n";
 }
-
 void Order::applyDiscount(const std::string& egn, const std::vector<Item>& items, bool& discountApplied) {
 
     Client::loadAllClientsFromFile();
@@ -185,7 +189,7 @@ void Order::applyDiscount(const std::string& egn, const std::vector<Item>& items
     std::cout << "✅ Discount of " << discount << " BGN applied.\n";
     discountApplied = true;
 }
-void removeDiscount(std::string egn, bool& discountApplied) {
+void Order::removeDiscount(std::string egn, bool& discountApplied) {
     Client::loadAllClientsFromFile();
     if (discountApplied == 0) {
         std::cout << "⚠️ No discount to remove.\n";
@@ -198,7 +202,7 @@ void removeDiscount(std::string egn, bool& discountApplied) {
 
     discountApplied = 0; // Reset applied discount
 }
- void Order::viewCart(const std::vector<Item>& items, bool discountApplied) {
+void Order::viewCart(const std::vector<Item>& items, bool discountApplied) {
     Client::loadAllClientsFromFile();
     double total = 0;
     std::cout << "\n🛒 Cart Contents:\n";
@@ -233,32 +237,34 @@ void Order::checkoutOrder(const std::vector<Item>& items, const std::string& cli
         itemDetails[item.getId()] = item;
     }
 
-    // Save order in memory
+    // Запазване в паметта
     orders.push_back(order);
     std::cout << "✅ New Order Created! ID: " << order.getId() << "\n";
 
-    // Save order to file
+    // Запис във файл
     std::ofstream outFile("Orders.txt", std::ios::app);
     if (outFile.is_open()) {
         outFile << order.getId() << "\n";
         outFile << clientEGN << "\n";
         outFile << statusToString(order.getStatus()) << "\n";
-        outFile << itemQuantities.size() << "\n";  // Unique item count
+        outFile << itemQuantities.size() << "\n";
 
         for (const auto& pair : itemQuantities) {
             int itemId = pair.first;
             int qty = pair.second;
             Item& item = itemDetails[itemId];
 
-            // Update quantity in file
             Item::updateQuantity(itemId, qty);
 
             outFile << item.getName() << "\n"
                 << item.getPrice() << "\n"
-                << item.getAvailable() << "\n";  // Save availability
+                << qty << "\n"                     // ✅ Записваме quantity
+                << item.getAvailable() << "\n";
         }
+
         Client::updateBalanceForOrder(clientEGN, order.getTotalPrice());
         Client::updatePoints(clientEGN, order.getRewardPoints());
+
         outFile << order.getTotalPrice() << "\n";
         outFile << order.getRewardPoints() << "\n";
         outFile.close();
@@ -268,22 +274,171 @@ void Order::checkoutOrder(const std::vector<Item>& items, const std::string& cli
         return;
     }
 
-    // 🎉 Display summary to user
-    std::cout << "\n🧾 Order Summary:\n";
+    // Обобщение
+    std::cout << "\nOrder Summary:\n";
     for (const auto& pair : itemQuantities) {
         const Item& item = itemDetails[pair.first];
         int qty = pair.second;
-        std::cout << "- " << item.getName()
-            << " x" << qty
+        std::cout << "- " << item.getName() << " x" << qty
             << " = " << (item.getPrice() * qty) << " BGN\n";
     }
 
-    std::cout << "📦 Total: " << order.getTotalPrice() << " BGN\n";
-    std::cout << "🎁 Reward Points: " << order.getRewardPoints() << "\n";
+    std::cout << "Total: " << order.getTotalPrice() << " BGN\n";
+    std::cout << "Reward Points: " << order.getRewardPoints() << "\n";
 }
+void Order::removeOrderById(int idToRemove) {
+    std::ifstream inFile("Orders.txt");
+    if (!inFile) {
+        std::cerr << "❌ Cannot open Orders.txt for reading.\n";
+        return;
+    }
 
+    std::ofstream outFile("Orders_temp.txt");
+    if (!outFile) {
+        std::cerr << "❌ Cannot open temporary file for writing.\n";
+        return;
+    }
 
+    int orderId, itemCount;
+    std::string clientEGN, status, itemName;
+    double itemPrice, totalPrice, rewardPoints;
+    bool found = false;
 
+    while (inFile >> orderId) {
+        inFile.ignore(); // skip newline
+        std::getline(inFile, clientEGN);
+        std::getline(inFile, status);
+        inFile >> itemCount;
+        inFile.ignore();
+
+        std::vector<std::pair<std::string, double>> items;
+
+        for (int i = 0; i < itemCount; ++i) {
+            std::getline(inFile, itemName);
+            inFile >> itemPrice;
+            inFile.ignore();
+            items.emplace_back(itemName, itemPrice);
+        }
+
+        inFile >> totalPrice >> rewardPoints;
+        inFile.ignore();
+
+        if (orderId == idToRemove) {
+            found = true;
+            continue; // skip writing this order
+        }
+
+        // Otherwise, keep this order
+        outFile << orderId << '\n'
+            << clientEGN << '\n'
+            << status << '\n'
+            << itemCount << '\n';
+
+        for (const auto& item : items) {
+            outFile << item.first << '\n'
+                << item.second << '\n';
+        }
+
+        outFile << totalPrice << '\n'
+            << rewardPoints << '\n';
+    }
+
+    inFile.close();
+    outFile.close();
+
+    if (found) {
+        std::remove("Orders.txt");
+        std::rename("Orders_temp.txt", "Orders.txt");
+        std::cout << "✅ Order ID " << idToRemove << " was successfully removed.\n";
+    }
+    else {
+        std::remove("Orders_temp.txt");
+        std::cout << "⚠️ Order ID " << idToRemove << " was not found.\n";
+    }
+}
+void Order::approveRefund(int orderIdToMove) {
+    std::ifstream inFile("Refunds.txt");
+    if (!inFile) {
+        std::cerr << "❌ Cannot open Reject.txt for reading.\n";
+        return;
+    }
+
+    std::ofstream outFile("Reject_temp.txt");
+    std::ofstream refundFile("RefundUser.txt", std::ios::app);
+    if (!outFile || !refundFile) {
+        std::cerr << "❌ Failed to open output files.\n";
+        return;
+    }
+
+    int orderId, itemCount;
+    std::string clientEGN, status, itemName, reason;
+    double itemPrice, total, points;
+    bool found = false;
+
+    while (inFile >> orderId) {
+        inFile.ignore();
+        std::getline(inFile, clientEGN);
+        std::getline(inFile, status);
+        inFile >> itemCount;
+        inFile.ignore();
+
+        std::vector<std::pair<std::string, double>> items;
+        for (int i = 0; i < itemCount; ++i) {
+            std::getline(inFile, itemName);
+            inFile >> itemPrice;
+            inFile.ignore();
+            items.emplace_back(itemName, itemPrice);
+        }
+
+        inFile >> total >> points;
+        inFile.ignore();
+        std::getline(inFile, reason);
+
+        if (orderId == orderIdToMove) {
+            found = true;
+
+            refundFile << orderId << '\n'
+                << clientEGN << '\n'
+                << status << '\n'
+                << itemCount << '\n';
+            for (const auto& item : items) {
+                refundFile << item.first << '\n'
+                    << item.second << '\n';
+            }
+            refundFile << total << '\n'
+                << points << '\n'
+                << reason << '\n';
+        }
+        else {
+            outFile << orderId << '\n'
+                << clientEGN << '\n'
+                << status << '\n'
+                << itemCount << '\n';
+            for (const auto& item : items) {
+                outFile << item.first << '\n'
+                    << item.second << '\n';
+            }
+            outFile << total << '\n'
+                << points << '\n'
+                << reason << '\n';
+        }
+    }
+
+    inFile.close();
+    outFile.close();
+    refundFile.close();
+
+    if (found) {
+        std::remove("Refunds.txt");
+        std::rename("Reject_temp.txt", "Refunds.txt");
+        std::cout << "✅ Order ID " << orderIdToMove << " moved to RefundUser.txt\n";
+    }
+    else {
+        std::remove("Reject_temp.txt");
+        std::cout << "⚠️ Order ID " << orderIdToMove << " was not found in Reject.txt\n";
+    }
+    Client::updateBalance(clientEGN, total);
+}
 void Order::addItem(const Item& item) {
     items.emplace_back(item, 1);
 }
@@ -350,8 +505,9 @@ void Order::updateOrderStatusById(int id) {
     std::cout << "Current status: " << statusToString(it->getStatus()) << "\n";
     std::cout << "Select new status:\n"
         << "1. Pending\n"
-        << "2. Shipped\n"
-        << "3. Delivered\n"
+        << "2. Confirmed\n"
+        << "3. Shipped\n"
+        << "4. Delivered\n"
         << "Choice: ";
 
     int choice;
@@ -359,8 +515,9 @@ void Order::updateOrderStatusById(int id) {
 
     switch (choice) {
     case 1: it->setStatus(OrderStatus::Pending); break;
-    case 2: it->setStatus(OrderStatus::Shipped); break;
-    case 3: it->setStatus(OrderStatus::Delivered); break;
+    case 2: it->setStatus(OrderStatus::Confirmed); break;
+    case 3: it->setStatus(OrderStatus::Shipped); break;
+    case 4: it->setStatus(OrderStatus::Delivered); break;
     default:
         std::cerr << "❌ Invalid choice. Status not updated.\n";
         return;
@@ -435,8 +592,9 @@ void Order::update(int id) {
 
             switch (choice) {
             case 1: order.setStatus(OrderStatus::Pending); break;
-            case 2: order.setStatus(OrderStatus::Shipped); break;
-            case 3: order.setStatus(OrderStatus::Delivered); break;
+            case 2: order.setStatus(OrderStatus::Confirmed); break;
+            case 3: order.setStatus(OrderStatus::Shipped); break;
+            case 4: order.setStatus(OrderStatus::Delivered); break;
             default: std::cout << "Invalid status.\n"; return;
             }
 
@@ -474,6 +632,68 @@ void Order::loadFromFile() {
         o.setClientEGN(clientEGN);
 
         if (statusStr == "Pending") o.setStatus(OrderStatus::Pending);
+        else if (statusStr == "Confirmed") o.setStatus(OrderStatus::Confirmed);
+        else if (statusStr == "Shipped") o.setStatus(OrderStatus::Shipped);
+        else if (statusStr == "Delivered") o.setStatus(OrderStatus::Delivered);
+
+        for (int i = 0; i < itemCount; ++i) {
+            std::string itemName;
+            double itemPrice;
+
+            std::getline(inFile, itemName);
+            inFile >> itemPrice;
+            inFile.ignore();
+
+            Item item;
+            item.setName(itemName);
+            item.setPrice(itemPrice);
+
+            o.items.emplace_back(item, 1);  // добавяме с фиксирано количество 1
+        }
+
+        inFile >> totalPrice >> rewardPoints;
+        inFile.ignore();
+
+        if (findIndexById(orderId) == -1) {
+            orders.push_back(o);
+        }
+
+        // ✅ Увери се, че nextId винаги надминава най-голямото ID
+        if (orderId >= nextId) {
+            nextId = orderId + 1;
+        }
+    }
+
+    inFile.close();
+}
+void Order::loadFromFileRefunds() {
+    std::ifstream inFile("Refunds.txt");
+    if (!inFile.is_open()) {
+        std::cerr << "Cannot open Orders.txt\n";
+        return;
+    }
+
+    orders.clear();             // 🧹 Изчистване на текущите поръчки
+    nextId = 1;                 // 🔁 Рестарт на ID, ще се коригира от прочетените поръчки
+
+    int orderId;
+    std::string clientEGN, statusStr;
+    int itemCount;
+    double totalPrice, rewardPoints;
+
+    while (inFile >> orderId) {
+        inFile.ignore();  // skip newline
+        std::getline(inFile, clientEGN);
+        std::getline(inFile, statusStr);
+        inFile >> itemCount;
+        inFile.ignore();
+
+        Order o;
+        o.setId(orderId);               // 🔑 Правилно задаване на ID (също обновява nextId)
+        o.setClientEGN(clientEGN);
+
+        if (statusStr == "Pending") o.setStatus(OrderStatus::Pending);
+        else if (statusStr == "Confirmed") o.setStatus(OrderStatus::Confirmed);
         else if (statusStr == "Shipped") o.setStatus(OrderStatus::Shipped);
         else if (statusStr == "Delivered") o.setStatus(OrderStatus::Delivered);
 
@@ -569,8 +789,116 @@ void Order::displayRejectedOrders() {
 
     inFile.close();
 }
-void Order::rejectOrderById(int id, std::string reason) {
-    loadFromFile();  // Увери се, че всички поръчки са заредени
+void Order::displayRefundedOrdersUsers(const std::string& currentEGN) {
+    std::ifstream inFile("RefundUser.txt");
+    if (!inFile.is_open()) {
+        std::cerr << "Cannot open RefundUser.txt\n";
+        return;
+    }
+
+    std::cout << "\n📦 Refunded Orders for EGN: " << currentEGN << "\n";
+
+    int id;
+    std::string egn, status, itemName, reason;
+    int itemCount;
+    double itemPrice, total, points;
+    bool found = false;
+
+    while (inFile >> id) {
+        inFile.ignore(); // Skip newline
+        std::getline(inFile, egn);
+        std::getline(inFile, status);
+        inFile >> itemCount;
+        inFile.ignore();
+
+        std::vector<std::pair<std::string, double>> items;
+
+        for (int i = 0; i < itemCount; ++i) {
+            std::getline(inFile, itemName);
+            inFile >> itemPrice;
+            inFile.ignore();
+            items.emplace_back(itemName, itemPrice);
+        }
+
+        inFile >> total >> points;
+        inFile.ignore();
+        std::getline(inFile, reason);
+
+        // ✅ Филтър по EGN
+        if (egn != currentEGN) continue;
+
+        found = true;
+        std::cout << "\nOrder ID: " << id << "\n";
+        std::cout << "Client EGN: " << egn << "\n";
+        std::cout << "Status: " << status << "\n";
+        std::cout << "Items:\n";
+        for (const auto& p : items) {
+            std::cout << "- " << p.first << " - " << p.second << " BGN\n";
+        }
+        std::cout << "Total Price: " << total << " BGN\n";
+        std::cout << "Reward Points: " << points << "\n";
+        std::cout << "❌ Refund Reason: " << reason << "\n";
+        std::cout << "----------------------------\n";
+    }
+
+    if (!found) {
+        std::cout << "⚠️ No refunded orders found for this EGN.\n";
+    }
+
+    inFile.close();
+}
+void Order::displayRefundedOrders() {
+    std::ifstream inFile("Refunds.txt");
+    if (!inFile.is_open()) {
+        std::cerr << "Cannot open Reject.txt\n";
+        return;
+    }
+
+    std::cout << "\nRefunds Orders:\n";
+
+    int id;
+    std::string egn, status, itemName, reason;
+    int itemCount;
+    double itemPrice, total, points;
+
+    while (inFile >> id) {
+        inFile.ignore(); // Skip newline
+        std::getline(inFile, egn);
+        std::getline(inFile, status);
+        inFile >> itemCount;
+        inFile.ignore();
+
+        std::vector<std::pair<std::string, double>> items;
+
+        for (int i = 0; i < itemCount; ++i) {
+            std::getline(inFile, itemName);
+            inFile >> itemPrice;
+            inFile.ignore();
+            items.emplace_back(itemName, itemPrice);
+        }
+
+        inFile >> total >> points;
+        inFile.ignore();
+        std::getline(inFile, reason);
+
+        // Display
+        std::cout << "\nOrder ID: " << id << "\n";
+        std::cout << "Client EGN: " << egn << "\n";
+        std::cout << "Status: " << status << "\n";
+        std::cout << "Items:\n";
+        for (const auto& p : items) {
+            std::cout << "- " << p.first << " - " << p.second << " BGN\n";
+        }
+        std::cout << "Total Price: " << total << " BGN\n";
+        std::cout << "Reward Points: " << points << "\n";
+        std::cout << "❌ Refundes Reason: " << reason << "\n";
+        std::cout << "----------------------------\n";
+    }
+
+    inFile.close();
+}
+void Order::rejectRefundOrderById(int id, std::string reason) {
+    loadFromFileRefunds();  // Увери се, че всички поръчки са заредени
 
     auto it = std::find_if(orders.begin(), orders.end(), [id](const Order& o) {
         return o.getId() == id;
@@ -583,7 +911,7 @@ void Order::rejectOrderById(int id, std::string reason) {
 
     const Order& order = *it;
 
-    std::ofstream outFile("Reject.txt", std::ios::app);
+    std::ofstream outFile("RejectRefund.txt", std::ios::app);
     if (!outFile.is_open()) {
         std::cerr << "❌ Failed to open Refunds.txt\n";
         return;
@@ -603,6 +931,44 @@ void Order::rejectOrderById(int id, std::string reason) {
     outFile << order.getTotalPrice() << "\n";
     outFile << order.getRewardPoints() << "\n";
     outFile << reason<< "\n";
+    outFile.close();
+
+    std::cout << "✅ Order ID " << id << " successfully written to Refunds.txt\n";
+}
+void Order::rejectOrderById(int id, std::string reason) {
+    loadFromFile();  // Увери се, че всички поръчки са заредени
+
+    auto it = std::find_if(orders.begin(), orders.end(), [id](const Order& o) {
+        return o.getId() == id;
+        });
+
+    if (it == orders.end()) {
+        std::cerr << "❌ No order found with ID: " << id << "\n";
+        return;
+    }
+
+    const Order& order = *it;
+
+    std::ofstream outFile("RejectRefund.txt", std::ios::app);
+    if (!outFile.is_open()) {
+        std::cerr << "❌ Failed to open Refunds.txt\n";
+        return;
+    }
+
+    outFile << order.getId() << "\n";
+    outFile << order.clientEGN << "\n";
+    outFile << statusToString(order.getStatus()) << "\n";
+    outFile << order.getItems().size() << "\n";
+
+    for (const auto& pair : order.getItems()) {
+        const Item& item = pair.first;
+        outFile << item.getName() << "\n";
+        outFile << item.getPrice() << "\n";
+    }
+
+    outFile << order.getTotalPrice() << "\n";
+    outFile << order.getRewardPoints() << "\n";
+    outFile << reason << "\n";
     outFile.close();
 
     std::cout << "✅ Order ID " << id << " successfully written to Refunds.txt\n";
@@ -680,28 +1046,97 @@ void Order::displayDelivered() {
         }
     }
 }
-void Order::displayUser(std::string eng) {
+void Order::displayConfirmed() {
     loadFromFile();  // Зарежда всички поръчки от файла
 
     bool found = false;
     for (const auto& order : orders) {
-        if (order.clientEGN == eng && order.getStatus() == OrderStatus::Shipped) {
+        if (order.getStatus() == OrderStatus::Confirmed) {
             std::cout << "-----------------------------\n";
             order.display();
             found = true;
         }
     }
 }
-void Order::displayUserShipped(std::string eng) {
-    loadFromFile();  // Зарежда всички поръчки от файла
+void Order::UpdatePointsWhenConfirmed(int orderId) {
+    loadFromFile(); // зарежда orders от файл
+
+    for (auto& order : orders) {
+        if (order.getId() == orderId) {
+            if (order.getStatus() == OrderStatus::Confirmed) {
+                std::string egn = order.clientEGN;
+                double pointsToAdd = order.getTotalPrice() * 0.5;
+
+                Client::updatePoints(egn, pointsToAdd); // извикваш своята функция
+
+                order.setStatus(OrderStatus::Shipped);
+                saveToFile(); // запази променения статус
+
+                std::cout << "✅ Order confirmed and points updated!\n";
+                return;
+            }
+            else {
+                std::cout << "⚠️ Order is not in 'Shipped' state.\n";
+                return;
+            }
+        }
+    }
+
+    std::cout << "❌ Order with ID " << orderId << " not found.\n";
+}
+void Order::displayUser(std::string eng) {
+    loadFromFile();
+
+   // std::cout << "[DEBUG] Loaded " << orders.size() << " orders\n";
 
     bool found = false;
     for (const auto& order : orders) {
-        if (order.clientEGN == eng) {
+      //  std::cout << "[DEBUG] Order EGN: " << order.clientEGN << "\n";
+        if (order.clientEGN == eng && order.getStatus() == OrderStatus::Confirmed) {
             std::cout << "-----------------------------\n";
             order.display();
             found = true;
         }
+    }
+
+    if (!found) {
+        std::cout << "❌ No confimemed orders found for this EGN.\n";
+    }
+}
+void Order::displayUserSum(std::string eng) {
+    loadFromFile();
+    bool found = false;
+    double totalSumforOrders = 0.0;
+    for (const auto& order : orders) {
+        if (order.clientEGN == eng ) {
+            std::cout << "-----------------------------\n";
+            order.display();
+            totalSumforOrders += order.getTotalPrice();
+            found = true;
+        }
+    }
+    std::cout << "The total sum of the orders of the current user is " << totalSumforOrders<<'/n';
+    if (!found) {
+        std::cout << "❌ No confimemed orders found for this EGN.\n";
+    }
+}
+void Order::displayUserDelivered(std::string eng) {
+    loadFromFile();
+
+    // std::cout << "[DEBUG] Loaded " << orders.size() << " orders\n";
+
+    bool found = false;
+    for (const auto& order : orders) {
+        //  std::cout << "[DEBUG] Order EGN: " << order.clientEGN << "\n";
+        if (order.clientEGN == eng && order.getStatus() == OrderStatus::Delivered) {
+            std::cout << "-----------------------------\n";
+            order.display();
+            found = true;
+        }
+    }
+
+    if (!found) {
+        std::cout << "❌ No confimemed orders found for this EGN.\n";
     }
 }
 void Order::displayAllOrdersFromFile() {

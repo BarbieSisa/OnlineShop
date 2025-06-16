@@ -2,11 +2,7 @@
 #pragma once
 #include "Item.h"
 
-enum class OrderStatus {
-    Pending,
-    Shipped,
-    Delivered
-};
+
 
 class Order; // Forward declaration
 

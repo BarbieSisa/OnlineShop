@@ -1,0 +1,20 @@
+FashionBoutique
+fashion123
+1234567890
+1
+black dress
+12.34
+1
+3
+green dress
+1.76
+1
+FashionDays
+moda325
+3242526272
+2
+pink dress
+12.56
+1
+
+

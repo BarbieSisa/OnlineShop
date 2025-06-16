@@ -1,14 +1,21 @@
 1
-Little Black Dress
-12.57
-480
+black dress
+12.34
+283
+dress
+3.5
+1
+2
+pink dress
+12.56
+395
 dress
 4.5
 1
-1
-Little Black Dress
-12.57
-480
+3
+green dress
+1.76
+649
 dress
-4.5
-0
+4.7
+1

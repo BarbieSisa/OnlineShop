@@ -24,7 +24,7 @@ void Client::updateBalanceForOrder(const std::string& egn, double amount) {
         return;
     }
 
-    clients[index].balance -= amount;
+    clients[index].balance += amount;
     saveAllClientsToFile();
     std::cout << "✅ Balance updated. New balance: " << clients[index].balance << "\n";
 }
@@ -83,7 +83,7 @@ void Client::updatePoints(const std::string& egn, double points) {
 
     clients[index].points += points;
     saveAllClientsToFile();
-    std::cout << "✅ Points updated. New points: " << clients[index].balance << "\n";
+    std::cout << "✅ Points updated. New points: " << clients[index].points << "\n";
 }
 
 void Client::saveAllClientsToFile() {
@@ -103,22 +103,50 @@ void Client::saveAllClientsToFile() {
 
     outFile.close();
 }
+std::string Client::loginClientByUsernameAndPassword(const std::string& username, const std::string& password) {
+    std::ifstream inFile("Clients.txt");
+    if (!inFile) {
+        std::cerr << "❌ Cannot open Clients.txt\n";
+        return "invalid";
+    }
+
+    std::string name, egn, filePassword;
+    double balance;
+    int points;
+
+    while (std::getline(inFile, name) &&
+        std::getline(inFile, egn) &&
+        std::getline(inFile, filePassword) &&
+        inFile >> balance &&
+        inFile >> points) {
+        inFile.ignore(); // Прескачане на празен ред/нов ред след числата
+
+        // 🔍 Проверка дали въведените username и password съвпадат
+        if (name == username && filePassword == password) {
+            return egn; // ✅ Успешен вход
+        }
+    }
+
+    return "invalid"; // ❌ Няма съвпадение
+}
+
 void Client::create() {
     std::string name, egn, password;
     double balance;
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
     std::cout << "Enter name: ";
     std::getline(std::cin, name);
-std::cin.ignore();
+
     std::cout << "Enter EGN: ";
     std::getline(std::cin, egn);
-    std::cin.ignore();
+
     std::cout << "Enter password: ";
     std::getline(std::cin, password);
- // std::cin.ignore();
+
     std::cout << "Enter initial balance: ";
     std::cin >> balance;
-    std::cin.ignore(); // clean leftover newline
+    std::cin.ignore(); // Изчистване на \n след cin
 
     Client newClient(name.c_str(), egn.c_str(), password.c_str(), balance);
     clients.push_back(newClient);
@@ -135,6 +163,58 @@ std::cin.ignore();
     else {
         std::cerr << "Failed to open file for writing.\n";
     }
+}
+
+void Client::approveCheck(const std::string& code, const std::string& egn) {
+    std::ifstream checkFile("Checks.txt");
+    if (!checkFile) {
+        std::cerr << "❌ Cannot open Checks.txt\n";
+        return;
+    }
+
+    std::string checkCode, lineAmount, checkEGN;
+    double amount = 0;
+    bool found = false;
+
+    std::vector<std::string> updatedChecks;
+
+    while (std::getline(checkFile, checkCode)) {
+        if (!std::getline(checkFile, lineAmount) || !std::getline(checkFile, checkEGN)) {
+            std::cerr << "⚠️ Incomplete check entry. Skipping.\n";
+            break;
+        }
+
+        if (checkCode == code && checkEGN == egn) {
+            amount = std::stod(lineAmount);
+            found = true;
+            // пропускаме този чек (той ще бъде одобрен)
+        }
+        else {
+            // запазваме останалите чекове
+            updatedChecks.push_back(checkCode);
+            updatedChecks.push_back(lineAmount);
+            updatedChecks.push_back(checkEGN);
+        }
+    }
+    checkFile.close();
+
+    if (!found) {
+        std::cout << "❗ No matching check with code \"" << code << "\" for EGN \"" << egn << "\".\n";
+        return;
+    }
+
+    // Обнови баланса чрез Client методите
+    loadAllClientsFromFile();  // статичен метод, зарежда clients
+    updateBalanceForOrder(egn, amount);  // обновява баланса и записва файла
+
+    // Презаписваме Checks.txt с останалите
+    std::ofstream outFile("Checks.txt", std::ios::trunc);
+    for (const std::string& line : updatedChecks) {
+        outFile << line << '\n';
+    }
+
+    std::cout << "✅ Check approved. " << amount << " added to balance of client with EGN " << egn << ".\n";
+    Admin::removeCheckByCode(code);
 }
 
 
