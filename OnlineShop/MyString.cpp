@@ -1,45 +1,200 @@
 #include "MyString.h"
 #include <cstring>
+#pragma warning(disable: 4996)
 
-void MyString::copyFrom(const char* src) {
-    length = strlen(src);
-    data = new char[length + 1];
-    strcpy(data, src);
+static unsigned roundToPowerOfTwo(unsigned v)
+{
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+    return v;
 }
-void MyString::free() {
-    delete[] data;
+
+static unsigned dataToAllocByStringLen(unsigned stringLength)
+{
+    return std::max(roundToPowerOfTwo(stringLength + 1), 16u);
 }
-MyString::MyString() : data(nullptr), length(0) {
-    data = new char[1];
+
+MyString::MyString(size_t stringLength)
+{
+    allocatedDataCapacity = dataToAllocByStringLen(stringLength);
+    data = new char[allocatedDataCapacity];
     data[0] = '\0';
 }
-MyString::MyString(const char* str) {
-    copyFrom(str);
+
+void MyString::resize(size_t newAllocatedDataCapacity)
+{
+    char* resizedData = new char[newAllocatedDataCapacity];
+    strcpy(resizedData, data);
+    delete[] data;
+    data = resizedData;
+    allocatedDataCapacity = newAllocatedDataCapacity;
 }
-MyString::MyString(const MyString& other) {
-    copyFrom(other.data);
+
+void MyString::free() {
+    delete[] data;
+    data = nullptr;
+    currentSize = allocatedDataCapacity = 0;
 }
-MyString& MyString::operator=(const MyString& other) {
+
+void MyString::copyFrom(const MyString& other) {
+    currentSize = other.currentSize;
+    allocatedDataCapacity = other.allocatedDataCapacity;
+    data = new char[allocatedDataCapacity];
+    strcpy(data, other.data);
+}
+
+void MyString::moveFrom(MyString&& other)
+{
+    currentSize = other.currentSize;
+    other.currentSize = 0;
+
+    allocatedDataCapacity = other.allocatedDataCapacity;
+    other.allocatedDataCapacity = 0;
+
+    data = other.data;
+    other.data = nullptr;
+}
+
+MyString::MyString() : MyString("") {}
+
+MyString::MyString(const char* str)
+{
+    currentSize = strlen(str);
+    allocatedDataCapacity = dataToAllocByStringLen(currentSize);
+    data = new char[allocatedDataCapacity];
+    strcpy(data, str);
+}
+
+MyString::MyString(const MyString& other)
+{
+    copyFrom(other);
+}
+
+MyString::MyString(MyString&& other) noexcept
+{
+    moveFrom(std::move(other));
+}
+
+MyString& MyString::operator=(const MyString& other)
+{
     if (this != &other) {
         free();
-        copyFrom(other.data);
+        copyFrom(other);
     }
     return *this;
 }
-MyString::~MyString() {
-    free();
-}
-const char* MyString::c_str() const {
-    return data;
-}
-size_t MyString::size() const {
-    return length;
-}
-bool MyString::operator==(const MyString& other) const {
-    return strcmp(data, other.data) == 0;
+
+MyString& MyString::operator=(MyString&& other) noexcept
+{
+    if (this != &other) {
+        free();
+        moveFrom(std::move(other));
+    }
+    return *this;
 }
 
-std::ostream& operator<<(std::ostream& out, const MyString& str) {
-    out << str.data;
-    return out;
+MyString::~MyString()
+{
+    free();
+}
+
+size_t MyString::capacity() const
+{
+    return allocatedDataCapacity;
+}
+
+size_t MyString::length() const
+{
+    return currentSize;
+}
+
+const char* MyString::c_str() const
+{
+    return data;
+}
+
+MyString& MyString::operator+=(const MyString& other)
+{
+    if (currentSize + other.currentSize + 1 > allocatedDataCapacity) {
+        resize(dataToAllocByStringLen(currentSize + other.currentSize));
+    }
+
+    strncat(data, other.data, other.currentSize);
+    currentSize += other.currentSize;
+
+    return *this;
+}
+
+char& MyString::operator[](size_t index)
+{
+    return data[index];
+}
+
+const char& MyString::operator[](size_t index) const
+{
+    return data[index];
+}
+
+MyString operator+(const MyString& lhs, const MyString& rhs)
+{
+    MyString result(lhs.length() + rhs.length());
+    result += lhs;
+    result += rhs;
+    return result;
+}
+
+std::ostream& operator<<(std::ostream& os, const MyString& str)
+{
+    return os << str.c_str();
+}
+
+std::istream& operator>>(std::istream& is, MyString& str)
+{
+    char buff[1024];
+    is >> buff;
+    size_t buffLength = strlen(buff);
+
+    if (buffLength > str.allocatedDataCapacity) {
+        str.resize(dataToAllocByStringLen(buffLength));
+    }
+
+    strcpy(str.data, buff);
+    str.currentSize = buffLength;
+
+    return is;
+}
+
+bool operator==(const MyString& lhs, const MyString& rhs)
+{
+    return strcmp(lhs.c_str(), rhs.c_str()) == 0;
+}
+
+bool operator!=(const MyString& lhs, const MyString& rhs)
+{
+    return strcmp(lhs.c_str(), rhs.c_str()) != 0;
+}
+
+bool operator<(const MyString& lhs, const MyString& rhs)
+{
+    return strcmp(lhs.c_str(), rhs.c_str()) < 0;
+}
+
+bool operator<=(const MyString& lhs, const MyString& rhs)
+{
+    return strcmp(lhs.c_str(), rhs.c_str()) <= 0;
+}
+
+bool operator>(const MyString& lhs, const MyString& rhs)
+{
+    return strcmp(lhs.c_str(), rhs.c_str()) > 0;
+}
+
+bool operator>=(const MyString& lhs, const MyString& rhs)
+{
+    return strcmp(lhs.c_str(), rhs.c_str()) >= 0;
 }

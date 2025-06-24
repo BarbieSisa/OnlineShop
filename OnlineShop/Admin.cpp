@@ -1,102 +1,179 @@
-﻿#include "Admin.h"
+﻿#include "Client.h"
+#include "Item.h"
+#include "Order.h"
+#include "CustomerStat.h"
 #include <iostream>
 #include <fstream>
-#include <iomanip>
-#include <sstream>
-#include <unordered_map>
-
-void Admin::sendCheck(double amount, const std::string& code, const std::string& clientEGN) {
-    std::ofstream outFile("Checks.txt", std::ios::app);
-    if (!outFile) {
-        std::cerr << "❌ Cannot open Checks.txt\n";
-        return;
+#include <stdexcept>
+int parseInt(const char* str) {
+    int result = 0;
+    while (*str >= '0' && *str <= '9') {
+        result = result * 10 + (*str - '0');
+        ++str;
     }
-    outFile << code << "\n" << amount << "\n" << clientEGN << "\n";
-    outFile.close();
-    std::cout << "✅ Check issued successfully for " << amount << " BGN to EGN: " << clientEGN << "\n";
+    return result;
 }
+double parseDouble(const char* str) {
+    double result = 0.0, frac = 0.0;
+    int divisor = 1;
+    bool afterDecimal = false;
 
+    while ((*str >= '0' && *str <= '9') || *str == '.') {
+        if (*str == '.') {
+            afterDecimal = true;
+        }
+        else if (!afterDecimal) {
+            result = result * 10 + (*str - '0');
+        }
+        else {
+            frac = frac * 10 + (*str - '0');
+            divisor *= 10;
+        }
+        ++str;
+    }
+
+    return result + frac / divisor;
+}
+bool areEqualEGNs(const MyString& a, const MyString& b) {
+    const char* sa = a.c_str();
+    const char* sb = b.c_str();
+    while (*sa && *sb) {
+        if (*sa != *sb) return false;
+        ++sa;
+        ++sb;
+    }
+    return *sa == '\0' && *sb == '\0';
+}
 void Admin::customerInsights() {
-    std::ifstream orderFile("Orders.txt");
-    if (!orderFile) {
-        std::cerr << "❌ Cannot open Orders.txt\n";
+    std::ifstream in("Orders.txt");
+    if (!in.is_open()) {
+        std::cout << "Cannot open Orders.txt\n";
         return;
     }
 
-    std::unordered_map<std::string, int> orderCount;
-    std::unordered_map<std::string, double> totalSpent;
+    char buffer[1024];
+    MyVector<CustomerStat> stats;
 
-    std::string egn, status;
-    int orderId, itemCount;
-    double price, rewardPoints;
-    std::string line;
+    while (in.getline(buffer, sizeof(buffer))) {
+        int orderId = parseInt(buffer);
 
-    while (orderFile >> orderId) {
-        orderFile.ignore();
-        std::getline(orderFile, egn);
-        std::getline(orderFile, status);
-        orderFile >> itemCount;
-        orderFile.ignore();
+        in.getline(buffer, sizeof(buffer));
+        MyString egn(buffer);
+
+        in.getline(buffer, sizeof(buffer)); // status
+        in.getline(buffer, sizeof(buffer));
+        int itemCount = parseInt(buffer);
 
         for (int i = 0; i < itemCount; ++i) {
-            std::getline(orderFile, line); // name
-            std::getline(orderFile, line); // price
-            std::getline(orderFile, line); // available
+            in.getline(buffer, sizeof(buffer)); // item name
+            in.getline(buffer, sizeof(buffer)); // item price
         }
 
-        orderFile >> price >> rewardPoints;
-        orderFile.ignore();
+        in.getline(buffer, sizeof(buffer));
+        double totalPrice = parseDouble(buffer);
 
-        orderCount[egn]++;
-        totalSpent[egn] += price;
+        in.getline(buffer, sizeof(buffer)); // reward points
+
+        bool found = false;
+        for (size_t i = 0; i < stats.size(); ++i) {
+            if (areEqualEGNs(stats[i].egn, egn)) {
+                stats[i].orderCount++;
+                stats[i].totalSpent += totalPrice;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            CustomerStat cs;
+            cs.egn = egn;
+            cs.orderCount = 1;
+            cs.totalSpent = totalPrice;
+            stats.push_back(cs);
+        }
     }
 
-    std::cout << "📊 Customer Insights:\n";
-    for (const auto& pair : orderCount) {
-        std::cout << "EGN: " << pair.first
-            << " | Orders: " << pair.second
-            << " | Total Spent: " << std::fixed << std::setprecision(2) << totalSpent[pair.first] << " BGN\n";
+    in.close();
+
+    std::cout << "Customer Insights:\n";
+    for (size_t i = 0; i < stats.size(); ++i) {
+        std::cout << "EGN: " << stats[i].egn.c_str()
+            << " | Orders: " << stats[i].orderCount
+            << " | Total Spent: " 
+            << stats[i].totalSpent << " BGN\n";
     }
 }
+void Admin::sendCheck(double amount, const MyString& code, const MyString& clientEGN) {
+    std::ofstream outFile("Checks.txt", std::ios::app);
+    if (!outFile.is_open()) {
+        std::printf("Cannot open Checks.txt\n");
+        return;
+    }
 
+    outFile << code.c_str() << "\n"
+        << amount << "\n"
+        << clientEGN.c_str() << "\n";
+
+    outFile.close();
+
+    std::printf("Check issued successfully for %.2f BGN to EGN: %s\n",
+        amount, clientEGN.c_str());
+}
 void Admin::viewTransactions() {
-    std::ifstream checkFile("Checks.txt");
-    if (!checkFile) {
-        std::cerr << "❌ Cannot open Checks.txt\n";
+    std::fstream checkFile("Checks.txt", std::ios::in);
+    if (!checkFile.is_open()) {
+        std::cout << "Cannot open Checks.txt\n";
         return;
     }
-    std::string code, line;
+
+    char buffer[256];
+    MyString code, amountStr, egn;
     double amount;
-    std::string egn;
 
-    std::cout << "💸 All Transactions:\n";
-    while (std::getline(checkFile, code)) {
-        std::getline(checkFile, line);
-        amount = std::stod(line);
-        std::getline(checkFile, egn);
-        std::cout << "Code: " << code << ", Amount: " << amount << ", Client EGN: " << egn << "\n";
+    std::cout << "All Transactions:\n";
+    while (checkFile.getline(buffer, 256)) {
+        code = buffer;
+
+        if (!checkFile.getline(buffer, 256)) break;
+        amountStr = buffer;
+
+        if (!checkFile.getline(buffer, 256)) break;
+        egn = buffer;
+
+        amount = parseDouble(amountStr.c_str());
+
+        std::cout << "Code: " << code
+            << ", Amount: " << amount
+            << ", Client EGN: " << egn << "\n";
     }
+
+    checkFile.close();
 }
-void Admin::displayChecksByEgn(const std::string& targetEgn) {
-    std::ifstream file("Checks.txt");
-    if (!file) {
-        std::cerr << "❌ Cannot open Checks.txt\n";
+void Admin::displayChecksByEgn(const MyString& targetEgn) {
+    std::fstream file("Checks.txt", std::ios::in);
+    if (!file.is_open()) {
+        std::cout << "Cannot open Checks.txt\n";
         return;
     }
 
-    std::string code, line, egn;
+    char buffer[256];
+    MyString code, amountStr, egn;
     double amount;
     bool found = false;
 
-    std::cout << "\n💳 Transactions for EGN: " << targetEgn << "\n";
+    std::cout << "\nTransactions for EGN: " << targetEgn << "\n";
 
-    while (std::getline(file, code)) {
-        if (!std::getline(file, line) || !std::getline(file, egn)) {
-            std::cerr << "⚠️ Incomplete transaction. Skipping.\n";
-            break;
-        }
+    while (file.getline(buffer, 256)) {
+        code = buffer;
 
-        amount = std::stod(line);
+        if (!file.getline(buffer, 256)) break;
+        amountStr = buffer;
+
+        if (!file.getline(buffer, 256)) break;
+        egn = buffer;
+
+        amount = parseDouble(amountStr.c_str());
+
         if (egn == targetEgn) {
             std::cout << "Code: " << code
                 << ", Amount: " << amount
@@ -106,120 +183,133 @@ void Admin::displayChecksByEgn(const std::string& targetEgn) {
     }
 
     if (!found) {
-        std::cout << "❗ No transactions found for this EGN.\n";
+        std::cout << "No transactions found for this EGN.\n";
     }
+
+    file.close();
 }
 void Admin::displayAllChecks() {
-    std::ifstream file("Checks.txt");
-    if (!file) {
-        std::cerr << "Cannot open Checks.txt\n";
+    std::fstream file("Checks.txt", std::ios::in);
+    if (!file.is_open()) {
+        std::cout << "Cannot open Checks.txt\n";
         return;
     }
 
-    std::string code, line, egn;
+    char buffer[256];
+    MyString code, amountStr, egn;
     double amount;
     bool found = false;
 
     std::cout << "\nAll Transactions:\n";
 
-    while (std::getline(file, code)) {
-        if (!std::getline(file, line) || !std::getline(file, egn)) {
-            std::cerr << "Incomplete transaction record. Skipping.\n";
-            break;
-        }
+    while (file.getline(buffer, 256)) {
+        code = buffer;
 
-        amount = std::stod(line);
-        std::cout << "Code: " << code
+        if (!file.getline(buffer, 256)) break;
+        amountStr = buffer;
+        amount = parseDouble(amountStr.c_str());  
+
+        if (!file.getline(buffer, 256)) break;
+        egn = buffer;
+
+        std::cout << "Code: " << code.c_str()
             << ", Amount: " << amount
-            << ", EGN: " << egn << "\n";
+            << ", EGN: " << egn.c_str() << "\n";
+
         found = true;
     }
 
     if (!found) {
-        std::cout << "❗ No transactions found.\n";
+        std::cout << "No transactions found.\n";
     }
 }
- void Admin::createCheck(const std::string& code, double amount, const std::string& egn) {
-    std::ofstream checkFile("Checks.txt", std::ios::app); // append mode
-    if (!checkFile) {
-        std::cerr << "❌ Cannot open Checks.txt for writing.\n";
+void Admin::createCheck(const MyString& code, double amount, const MyString& egn) {
+    std::fstream checkFile("Checks.txt", std::ios::out | std::ios::app);
+    if (!checkFile.is_open()) {
+        std::cout << "Cannot open Checks.txt for writing.\n";
         return;
     }
 
-    checkFile << code << '\n'
-        << amount << '\n'
-        << egn << '\n';
+    checkFile << code.c_str() << '\n';
+    checkFile << amount << '\n';
+    checkFile << egn.c_str() << '\n';
 
-    std::cout << "Transaction recorded: Code=" << code
+    std::cout << "Transaction recorded: Code=" << code.c_str()
         << ", Amount=" << amount
-        << ", EGN=" << egn << "\n";
+        << ", EGN=" << egn.c_str() << "\n";
 }
- void Admin::removeCheckByCode(const std::string& targetCode) {
-     std::ifstream inFile("Checks.txt");
-     if (!inFile) {
-         std::cerr << "Cannot open Checks.txt\n";
+ void Admin::removeCheckByCode(const MyString& targetCode) {
+     std::fstream inFile("Checks.txt", std::ios::in);
+     if (!inFile.is_open()) {
+         std::cout << "Cannot open Checks.txt\n";
          return;
      }
 
-     std::vector<std::string> lines;
-     std::string code, line1, line2;
-
+     MyVector<MyString> lines;
+     char buffer[128];
+     char code[128], line1[128], line2[128];
      bool removed = false;
 
-     while (std::getline(inFile, code)) {
-         if (!std::getline(inFile, line1) || !std::getline(inFile, line2)) {
-             std::cerr << "⚠️ Incomplete record found. Skipping.\n";
+     while (inFile.getline(code, 128)) {
+         if (!inFile.getline(line1, 128) || !inFile.getline(line2, 128)) {
              break;
          }
 
-         if (code == targetCode) {
-             removed = true; // пропускаме тази транзакция
+         MyString readCode(code);
+         if (readCode == targetCode) {
+             removed = true;
          }
          else {
-             lines.push_back(code);
-             lines.push_back(line1);
-             lines.push_back(line2);
+             lines.push_back(MyString(code));
+             lines.push_back(MyString(line1));
+             lines.push_back(MyString(line2));
          }
      }
      inFile.close();
 
-     std::ofstream outFile("Checks.txt", std::ios::trunc); // изтрива съдържанието
-     if (!outFile) {
-         std::cerr << "Cannot open Checks.txt for writing.\n";
+     std::fstream outFile("Checks.txt", std::ios::out | std::ios::trunc);
+     if (!outFile.is_open()) {
+         std::cout << "Cannot open Checks.txt for writing\n";
          return;
      }
 
-     for (const std::string& line : lines) {
-         outFile << line << '\n';
+     for (size_t i = 0; i < lines.size(); ++i) {
+         outFile << lines[i].c_str() << '\n';
      }
 
      if (removed) {
-         std::cout << "Transaction with code \"" << targetCode << "\" was removed.\n";
+         std::cout << "Transaction with code \"" << targetCode.c_str() << "\" was removed.\n";
      }
      else {
-         std::cout << "No transaction with code \"" << targetCode << "\" was found.\n";
+         std::cout << "No transaction with code \"" << targetCode.c_str() << "\" was found.\n";
      }
  }
- std::string Admin::loginAdminByUsernameAndPassword(const std::string& username, const std::string& password) {
-     std::ifstream inFile("Admins.txt");
-     if (!inFile) {
-         std::cerr << "❌ Cannot open Admins.txt\n";
+ MyString Admin::loginAdminByUsernameAndPassword(const MyString& username, const MyString& password) {
+     std::fstream inFile("Admins.txt", std::ios::in);
+     if (!inFile.is_open()) {
+         std::cout << "Cannot open Admins.txt\n";
          return "invalid";
      }
 
-     std::string name, egn, filePassword;
+     char nameBuffer[128];
+     char egnBuffer[16];
+     char passwordBuffer[128];
      double totalSystemSum;
 
-     while (std::getline(inFile, name) &&
-         std::getline(inFile, egn) &&
-         std::getline(inFile, filePassword) &&
+     while (inFile.getline(nameBuffer, 128) &&
+         inFile.getline(egnBuffer, 16) &&
+         inFile.getline(passwordBuffer, 128) &&
          inFile >> totalSystemSum) {
-         inFile.ignore(); // skip newline after totalSystemSum
+         inFile.ignore();
 
-         if (name == username && filePassword == password) {
-             return egn; // ✅ успешен вход
+         MyString fileName(nameBuffer);
+         MyString fileEgn(egnBuffer);
+         MyString filePassword(passwordBuffer);
+
+         if (fileName == username && filePassword == password) {
+             return fileEgn;
          }
      }
 
-     return "invalid"; // ❌ неуспешен вход
+     return "invalid";
  }

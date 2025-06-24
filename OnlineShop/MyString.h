@@ -1,28 +1,50 @@
-#ifndef MYSTRING_H
-#define MYSTRING_H
-
+#pragma once
 #include <iostream>
 
 class MyString {
-private:
-    char* data;
-    size_t length;
-
-    void copyFrom(const char* src);
-    void free();
-
 public:
     MyString();
-    MyString(const char* str);
+    MyString(const char* data);
+
     MyString(const MyString& other);
+    MyString(MyString&& other) noexcept;
+
     MyString& operator=(const MyString& other);
+    MyString& operator=(MyString&& other) noexcept;
+
     ~MyString();
 
-    const char* c_str() const;
-    size_t size() const;
+    size_t capacity() const;
+    size_t length() const;
 
-    bool operator==(const MyString& other) const;
-    friend std::ostream& operator<<(std::ostream& out, const MyString& str);
+    const char* c_str() const;
+
+    MyString& operator+=(const MyString& other);
+
+    char& operator[](size_t index);
+    const char& operator[](size_t index) const;
+
+    friend MyString operator+(const MyString& lhs, const MyString& rhs);
+    friend std::istream& operator>>(std::istream& is, MyString& str);
+
+private:
+    explicit MyString(size_t stringLength);
+
+    void resize(size_t newAllocatedDataCapacity);
+    void free();
+    void copyFrom(const MyString& other);
+    void moveFrom(MyString&& other);
+
+    char* data = nullptr;
+    size_t currentSize = 0;
+    size_t allocatedDataCapacity = 0;
 };
 
-#endif
+std::ostream& operator<<(std::ostream& os, const MyString& str);
+
+bool operator==(const MyString& lhs, const MyString& rhs);
+bool operator!=(const MyString& lhs, const MyString& rhs);
+bool operator<(const MyString& lhs, const MyString& rhs);
+bool operator<=(const MyString& lhs, const MyString& rhs);
+bool operator>(const MyString& lhs, const MyString& rhs);
+bool operator>=(const MyString& lhs, const MyString& rhs);

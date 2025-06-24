@@ -1,62 +1,64 @@
 #pragma once
-#include <string>
-#include <vector>
-#include <iostream>
 
+#include <iostream>
+#include "MyString.h"
+#include "MyVector.hpp"
 class Item {
+private:
     int id = 0;
-    std::string name;
+    MyString name;
     double price = 0.0;
     int quantity = 0;
-    std::string description;
+    MyString description;
     double rating = 0.0;
     bool available = true;
 
-    static std::vector<Item> items;
+    static MyVector<Item> items;
     static int nextId;
-
-   
 
 public:
     Item() = default;
-    std::string getDescription() const;
+
+    Item(const MyString& name, double price, int quantity,
+        const MyString& description, double rating);
+
+    // Getters
+    int getId() const;
+    MyString getName() const;
+    double getPrice() const;
+    int getQuantity() const;
+    MyString getDescription() const;
     double getRating() const;
+    bool getAvailable() const;
+   static int toInt(const char* str);
+   static double toDouble(const char* str);
+    // Setters
+    void setId(int newId);
+    void setName(const MyString& name);
+    void setPrice(double price);
+    void setQuantity(int newQuantity);
+    void setAvailable(bool available);
+    void setRating(double newRating);
 
-    Item(const std::string& name, double price, int quantity,
-        const std::string& description, double rating);
-
-    // CRUD interface
+    // CRUD operations
     static void create();
-   static void removeById(int idToRemove);
+    static void removeById(int idToRemove);
     static void displayByPriceAsc();
     static void displayByAlphabetical();
-   static void displayByPriceDesc();
-   static void displayByRating();
-    // static to avoid using default object
+    static void displayByPriceDesc();
+    static void displayByRating();
     static Item read(int id);
-    static void update(int id);
     static void remove(int id);
     static void listProducts();
     static void displayAllProducts();
-
     static void viewProductById(int searchId);
 
-    // Utility
-   // void printDetails() const;
-    bool getAvailable() const;
-    double getPrice() const;
-    int getQuantity() const;
-    int getId() const;
-    void setId(int newId);
-    void setQuantity(int newQuantity);
-    void setName(const std::string& name);
-    void setPrice(double price);
+    // Utilities
     static int findIndexById(int id);
-    void setAvailable(bool available);
-    void setRating(double newRating);
-    static void updateQuantity(int, int);
-      const std::string& getName() const;
+    static void updateQuantity(int productId, int newQuantity);
     static void updateRating(int productId, double newRating);
-      //static void loadFromFile();
-      //static void setNextId(int value);
+
+    // If needed later:
+    // static void loadFromFile();
+    // static void setNextId(int value);
 };

@@ -1,63 +1,70 @@
 ﻿#include "BusinessAccount.h"
 #include <iostream>
 #include<fstream>
-#include<string>
-using std::cout;
-using std::endl;
-
-BusinessAccount::BusinessAccount(const std::string& name, const std::string& egn, const std::string& password)
+#include<iostream>
+#include "MyString.h"
+#include "MyVector.hpp"
+#include "Order.h"
+#include "Client.h"
+#include "Item.h"
+#include "User.h"
+BusinessAccount::BusinessAccount(const MyString& name, const MyString& egn, const MyString& password)
     : User(name.c_str(), egn.c_str(), password.c_str()) {
 }
 void BusinessAccount::setSoldItem(const Item& item, int count) {
-    soldItem.first = count;
-    soldItem.second = item;
+    soldItem.set(item, count);
 }
-std::string BusinessAccount::loginBusinessByUsernameAndPassword(const std::string& username, const std::string& password) {
+const BusinessSoldItem& BusinessAccount::getSoldItem() const {
+    return soldItem;
+}
+MyString BusinessAccount::loginBusinessByUsernameAndPassword(const MyString& username, const MyString& password) {
     std::ifstream inFile("BusinessAccount.txt");
-    if (!inFile) {
-        std::cerr << "❌ Cannot open BusinessAccount.txt\n";
+    if (!inFile.is_open()) {
+        std::cout << "❌ Cannot open BusinessAccount.txt\n";
         return "invalid";
     }
 
-    std::string name, egn, storedPassword;
-    std::string itemName;
+    char name[128];
+    char egn[32];
+    char storedPassword[128];
+    char itemName[128];
     int itemId, availability;
     double price;
 
-    while (std::getline(inFile, name) &&
-        std::getline(inFile, egn) &&
-        std::getline(inFile, storedPassword) &&
+    while (
+        inFile.getline(name, 128) &&
+        inFile.getline(egn, 32) &&
+        inFile.getline(storedPassword, 128) &&
         (inFile >> itemId) &&
-        inFile.ignore() &&                             // след itemId
-        std::getline(inFile, itemName) &&
+        inFile.ignore() &&
+        inFile.getline(itemName, 128) &&
         (inFile >> price) &&
-        inFile.ignore() &&                             // след price
-        (inFile >> availability)) {
-        inFile.ignore();                                  // след availability
+        inFile.ignore() &&
+        (inFile >> availability) &&
+        inFile.ignore()
+        ) {
+        MyString nameStr(name);
+        MyString egnStr(egn);
+        MyString passStr(storedPassword);
 
-        // ДЕБЪГ – махни това после
-        std::cout << "[DEBUG] read name: " << name << ", egn: " << egn << ", pass: " << storedPassword << std::endl;
-
-        if (username == name && password == storedPassword) {
-            return egn;  // успех
+        if (username == nameStr && password == passStr) {
+            return egnStr;  // 🟢 успех
         }
     }
 
-    return "invalid";  // неуспех
+    inFile.close();
+    return "invalid";  // 🔴 неуспех
 }
-const std::pair<int, Item>& BusinessAccount::getSoldItem() const {
-    return soldItem;
-}
-void BusinessAccount::viewSoldItem() const {
+void BusinessAccount::viewSoldItems() const {
     cout << "Sold Item Info:" << endl;
-    cout << "Quantity: " << soldItem.first << endl;
-    cout << "Item Name: " << soldItem.second.getName() << endl;
+    cout << "Quantity: " << soldItem.quantity << endl;
+    cout << "Item Name: " << soldItem.item.getName() << endl;
 }
 void BusinessAccount::viewProfile() const {
     cout << "Business Profile:\n";
     cout << "Name: " << getName() << endl;
     cout << "EGN: " << getEGN() << endl;
-    viewSoldItem();
+    viewSoldItems();
 }
 void BusinessAccount::help() const {
     cout << "Business Commands:\n"
@@ -69,69 +76,77 @@ void BusinessAccount::help() const {
         << " - view-revenue\n";
 }
 void BusinessAccount::create() {
-    std::string name, egn, password;
+    char name[64], egn[16], password[64];
     std::cout << "Enter business name: ";
-    std::getline(std::cin >> std::ws, name);
+    std::cin.getline(name, 64);
     std::cout << "Enter EGN: ";
-    std::getline(std::cin, egn);
+    std::cin.getline(egn, 16);
     std::cout << "Enter password: ";
-    std::getline(std::cin, password);
+    std::cin.getline(password, 64);
 
     std::ifstream inFile("Items.txt");
-    if (!inFile) {
+    if (!inFile.is_open()) {
         std::cerr << "❌ Cannot open Items.txt\n";
         return;
     }
 
-    std::vector<Item> availableItems;
-    std::string line;
-    while (getline(inFile, line)) {
-        int id = std::stoi(line);
-        std::string itemName;
-        getline(inFile, itemName);
+    const int MAX_ITEMS = 100;
+    Item availableItems[MAX_ITEMS];
+    int itemCount = 0;
 
-        getline(inFile, line);
-        double price = std::stod(line);
+    while (!inFile.eof() && itemCount < MAX_ITEMS) {
+        char buffer[256];
+        inFile.getline(buffer, 256);
+        int id = atoi(buffer);
 
-        getline(inFile, line);
-        int quantity = std::stoi(line);
+        inFile.getline(buffer, 256);
+        char itemName[128];
+        strcpy(itemName, buffer);
 
-        std::string description;
-        getline(inFile, description);
+        inFile.getline(buffer, 256);
+        double price = atof(buffer);
 
-        getline(inFile, line);
-        double rating = std::stod(line);
+        inFile.getline(buffer, 256);
+        int quantity = atoi(buffer);
 
-        getline(inFile, line);
-        bool available = (line == "1" || line == "true");
+        inFile.getline(buffer, 256);
+        char description[256];
+        strcpy(description, buffer);
+
+        inFile.getline(buffer, 256);
+        double rating = atof(buffer);
+
+        inFile.getline(buffer, 256);
+        bool available = (strcmp(buffer, "1") == 0 || strcmp(buffer, "true") == 0);
 
         if (available) {
             Item item(itemName, price, quantity, description, rating);
-            *((int*)&item) = id;
+            *((int*)&item) = id; // set ID via cast hack
             item.setAvailable(true);
-            availableItems.push_back(item);
+            availableItems[itemCount++] = item;
         }
     }
+
     inFile.close();
 
-    if (availableItems.empty()) {
-        cout << "No available items found.\n";
+    if (itemCount == 0) {
+        std::cout << "No available items found.\n";
         return;
     }
 
-    cout << "Available Items:\n";
-    for (const auto& item : availableItems) {
-        cout << item.getId() << " - " << item.getName() << endl;
+    std::cout << "Available Items:\n";
+    for (int i = 0; i < itemCount; ++i) {
+        std::cout << availableItems[i].getId() << " - " << availableItems[i].getName() << std::endl;
     }
 
     int choiceId;
-    cout << "Enter the ID of the item to sell: ";
+    std::cout << "Enter the ID of the item to sell: ";
     std::cin >> choiceId;
 
-    for (const auto& item : availableItems) {
-        if (item.getId() == choiceId) {
+    for (int i = 0; i < itemCount; ++i) {
+        if (availableItems[i].getId() == choiceId) {
             int count;
-            cout << "Enter quantity to sell: ";
+            std::cout << "Enter quantity to sell: ";
             std::cin >> count;
 
             std::ofstream outFile("BusinessAccount.txt", std::ios::app);
@@ -139,20 +154,23 @@ void BusinessAccount::create() {
                 outFile << name << "\n"
                     << egn << "\n"
                     << password << "\n"
-                    << item.getId() << "\n"
-                    << item.getName() << "\n"
-                    << item.getPrice() << "\n"
+                    << availableItems[i].getId() << "\n"
+                    << availableItems[i].getName() << "\n"
+                    << availableItems[i].getPrice() << "\n"
                     << count << "\n";
                 outFile.close();
-                cout << "Business account and item sale saved.\n";
+                std::cout << "Business account and item sale saved.\n";
             }
             else {
                 std::cerr << "Could not write to BusinessAccount.txt\n";
             }
+
             return;
         }
     }
-    cout << "Item ID not found.\n";
+
+    std::cout << "Item ID not found.\n";
 }
+
 
 
